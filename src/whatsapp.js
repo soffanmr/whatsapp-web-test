@@ -63,4 +63,37 @@ function getInfo() {
   }
 }
 
-module.exports = { sendText, isReady, client, getQrImageBuffer, getInfo };
+/**
+ * Wait for the next message from a specific phone number (the recipient jid).
+ * Resolves with the message object when a matching message arrives, or null on timeout.
+ * to: phone number like '1234567890' or '1234567890@c.us'
+ * options: { timeout: milliseconds }
+ */
+function waitForReply(to, options = {}) {
+  const timeoutMs = typeof options.timeout === 'number' ? options.timeout : 60000;
+  const jid = to.includes('@') ? to : `${to}@c.us`;
+
+  return new Promise((resolve) => {
+    const handler = (msg) => {
+      try {
+        // msg.from is like '1234567890@c.us' for individual chats
+        if (msg.from === jid || msg.author === jid) {
+          client.removeListener('message', handler);
+          clearTimeout(timeout);
+          resolve(msg);
+        }
+      } catch (e) {
+        // swallow and continue
+      }
+    };
+
+    const timeout = setTimeout(() => {
+      client.removeListener('message', handler);
+      resolve(null); // timed out
+    }, timeoutMs);
+
+    client.on('message', handler);
+  });
+}
+
+module.exports = { sendText, isReady, client, getQrImageBuffer, getInfo, waitForReply };
