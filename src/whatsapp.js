@@ -96,4 +96,32 @@ function waitForReply(to, options = {}) {
   });
 }
 
-module.exports = { sendText, isReady, client, getQrImageBuffer, getInfo, waitForReply };
+/**
+ * Listen for all replies from a specific number (jid) for a given timeout.
+ * Calls onReply(msg) for each reply received within the window.
+ * Returns a promise that resolves after the timeout.
+ */
+function waitForReplies(to, onReply, options = {}) {
+  const timeoutMs = typeof options.timeout === 'number' ? options.timeout : 60000;
+  const jid = to.includes('@') ? to : `${to}@c.us`;
+
+  return new Promise((resolve) => {
+    const handler = (msg) => {
+      try {
+        if (msg.from === jid || msg.author === jid) {
+          onReply(msg);
+        }
+      } catch (e) {
+        // swallow and continue
+      }
+    };
+
+    client.on('message', handler);
+    const timeout = setTimeout(() => {
+      client.removeListener('message', handler);
+      resolve();
+    }, timeoutMs);
+  });
+}
+
+module.exports = { sendText, isReady, client, getQrImageBuffer, getInfo, waitForReply, waitForReplies };

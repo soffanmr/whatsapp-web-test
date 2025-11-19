@@ -1,5 +1,5 @@
 const express = require('express');
-const { sendText, isReady, getQrImageBuffer, getInfo, waitForReply } = require('./whatsapp');
+const { sendText, isReady, getQrImageBuffer, getInfo, waitForReply, waitForReplies } = require('./whatsapp');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
@@ -75,26 +75,28 @@ app.post('/send', async (req, res) => {
 
     // Non-blocking: listen for the first reply from the recipient number
     // This will log the reply if it arrives within the specified timeout (fallback 60s)
-    waitForReply(to, { timeout: waitTimeout })
-      .then((reply) => {
-        if (reply) {
-          const replyText = reply && typeof reply.body !== 'undefined' ? reply.body : reply;
-          console.log(`Received reply from ${to}:`, replyText);
-          // If a callback URL was provided, POST the to and reply to it
-          if (cbUrl) {
-            postJson(cbUrl, { to, reply: replyText })
-              .then((resp) => {
-                console.log(`Callback POST to ${cbUrl} succeeded with status ${resp.statusCode}`);
-              })
-              .catch((err) => {
-                console.error(`Callback POST to ${cbUrl} failed:`, err && err.message ? err.message : err);
-              });
-          }
-        } else {
+    // Listen for all replies from the recipient within the timeout window
+    let gotAnyReply = false;
+    waitForReplies(to, (reply) => {
+      gotAnyReply = true;
+      const replyText = reply && typeof reply.body !== 'undefined' ? reply.body : reply;
+      console.log(`Received reply from ${to}:`, replyText);
+      if (cbUrl) {
+        postJson(cbUrl, { to, reply: replyText })
+          .then((resp) => {
+            console.log(`Callback POST to ${cbUrl} succeeded with status ${resp.statusCode}`);
+          })
+          .catch((err) => {
+            console.error(`Callback POST to ${cbUrl} failed:`, err && err.message ? err.message : err);
+          });
+      }
+    }, { timeout: waitTimeout })
+      .then(() => {
+        if (!gotAnyReply) {
           console.log(`No reply received from ${to} within timeout`);
         }
       })
-      .catch((err) => console.error('Error while waiting for reply:', err));
+      .catch((err) => console.error('Error while waiting for replies:', err));
   } catch (err) {
     console.error('Error sending message:', err);
     res.status(500).json({ error: err.message || String(err) });
