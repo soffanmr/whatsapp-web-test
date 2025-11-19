@@ -90,7 +90,7 @@ app.post('/send', async (req, res) => {
             console.error(`Callback POST to ${cbUrl} failed:`, err && err.message ? err.message : err);
           });
       }
-    }, { timeout: waitTimeout })
+    }, { timeout: waitTimeout, callbackUrl: cbUrl })
       .then(() => {
         if (!gotAnyReply) {
           console.log(`No reply received from ${to} within timeout`);

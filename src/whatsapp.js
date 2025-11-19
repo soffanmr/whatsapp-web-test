@@ -104,6 +104,25 @@ function waitForReply(to, options = {}) {
 function waitForReplies(to, onReply, options = {}) {
   const timeoutMs = typeof options.timeout === 'number' ? options.timeout : 60000;
   const jid = to.includes('@') ? to : `${to}@c.us`;
+  const callbackUrl = typeof options.callbackUrl === 'string' && options.callbackUrl.trim() !== '' ? options.callbackUrl.trim() : null;
+
+  // Maintain active listeners keyed by jid+callbackUrl so repeated sends with same
+  // recipient and callback remove previous listeners to avoid duplicate callbacks.
+  if (!global.__whatsapp_active_listeners) global.__whatsapp_active_listeners = new Map();
+
+  // If callbackUrl provided, form a stable key; otherwise create a unique key
+  // so listeners without callbackUrl do not collide.
+  const key = callbackUrl ? `${jid}|${callbackUrl}` : `${jid}|__unique__|${Date.now()}|${Math.random()}`;
+
+  // If an existing listener exists for this key, remove it now.
+  const existing = global.__whatsapp_active_listeners.get(key);
+  if (existing) {
+    try {
+      client.removeListener('message', existing.handler);
+    } catch (e) {}
+    if (existing.timeoutId) clearTimeout(existing.timeoutId);
+    global.__whatsapp_active_listeners.delete(key);
+  }
 
   return new Promise((resolve) => {
     const handler = (msg) => {
@@ -117,10 +136,16 @@ function waitForReplies(to, onReply, options = {}) {
     };
 
     client.on('message', handler);
-    const timeout = setTimeout(() => {
-      client.removeListener('message', handler);
+    const timeoutId = setTimeout(() => {
+      try {
+        client.removeListener('message', handler);
+      } catch (e) {}
+      global.__whatsapp_active_listeners.delete(key);
       resolve();
     }, timeoutMs);
+
+    // store active listener so subsequent calls with same key can remove it
+    global.__whatsapp_active_listeners.set(key, { handler, timeoutId });
   });
 }
 
