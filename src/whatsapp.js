@@ -103,8 +103,10 @@ function waitForReply(to, options = {}) {
  */
 function waitForReplies(to, onReply, options = {}) {
   const timeoutMs = typeof options.timeout === 'number' ? options.timeout : 60000;
-  const jid = to.includes('@') ? to : `${to}@c.us`;
   const callbackUrl = typeof options.callbackUrl === 'string' && options.callbackUrl.trim() !== '' ? options.callbackUrl.trim() : null;
+  // options.originRemote: prefer matching replies by the message id.remote returned from sendMessage
+  const originRemote = typeof options.originRemote === 'string' && options.originRemote.trim() !== '' ? options.originRemote.trim() : null;
+  const jid = (typeof to === 'string' && to.includes('@')) ? to : (typeof to === 'string' && to ? `${to}@c.us` : null);
 
   // Maintain active listeners keyed by jid+callbackUrl so repeated sends with same
   // recipient and callback remove previous listeners to avoid duplicate callbacks.
@@ -112,7 +114,10 @@ function waitForReplies(to, onReply, options = {}) {
 
   // If callbackUrl provided, form a stable key; otherwise create a unique key
   // so listeners without callbackUrl do not collide.
-  const key = callbackUrl ? `${jid}|${callbackUrl}` : `${jid}|__unique__|${Date.now()}|${Math.random()}`;
+  // Use originRemote in the key if available so repeated sends to same recipient
+  // (but different origin message) don't accidentally collide.
+  const keyBase = originRemote || jid || '__no_jid__';
+  const key = callbackUrl ? `${keyBase}|${callbackUrl}` : `${keyBase}|__unique__|${Date.now()}|${Math.random()}`;
 
   // If an existing listener exists for this key, remove it now.
   const existing = global.__whatsapp_active_listeners.get(key);
@@ -127,7 +132,26 @@ function waitForReplies(to, onReply, options = {}) {
   return new Promise((resolve) => {
     const handler = (msg) => {
       try {
-        if (msg.from === jid || msg.author === jid) {
+        // Prefer matching by the originRemote (message id.remote) when provided.
+        // This is more reliable than comparing msg.from because some messages
+        // may use different fields depending on message type (groups, statuses).
+        let matched = false;
+
+        if (originRemote) {
+          // msg.id may be an object with a `remote` property in whatsapp-web.js
+          try {
+            if (msg && msg.id && (msg.id.remote === originRemote || msg.id._serialized === originRemote)) matched = true;
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        // Fallback: compare msg.from or msg.author to the provided jid
+        if (!matched && jid) {
+          if (msg.from === jid || msg.author === jid) matched = true;
+        }
+
+        if (matched) {
           onReply(msg);
         }
       } catch (e) {

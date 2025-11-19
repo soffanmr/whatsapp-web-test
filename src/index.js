@@ -77,6 +77,8 @@ app.post('/send', async (req, res) => {
     // This will log the reply if it arrives within the specified timeout (fallback 60s)
     // Listen for all replies from the recipient within the timeout window
     let gotAnyReply = false;
+    // prefer matching by the sent message's remote id (more reliable than the original `to`)
+    const originRemote = (result && result.id && (result.id.remote || result.id._serialized)) ? (result.id.remote || result.id._serialized) : null;
     waitForReplies(to, (reply) => {
       gotAnyReply = true;
       const replyText = reply && typeof reply.body !== 'undefined' ? reply.body : reply;
@@ -90,7 +92,7 @@ app.post('/send', async (req, res) => {
             console.error(`Callback POST to ${cbUrl} failed:`, err && err.message ? err.message : err);
           });
       }
-    }, { timeout: waitTimeout, callbackUrl: cbUrl })
+    }, { timeout: waitTimeout, callbackUrl: cbUrl, originRemote })
       .then(() => {
         if (!gotAnyReply) {
           console.log(`No reply received from ${to} within timeout`);
