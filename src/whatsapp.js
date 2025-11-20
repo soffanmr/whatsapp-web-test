@@ -103,21 +103,18 @@ function waitForReply(to, options = {}) {
  */
 function waitForReplies(to, onReply, options = {}) {
   const timeoutMs = typeof options.timeout === 'number' ? options.timeout : 60000;
-  const callbackUrl = typeof options.callbackUrl === 'string' && options.callbackUrl.trim() !== '' ? options.callbackUrl.trim() : null;
   // options.originRemote: prefer matching replies by the message id.remote returned from sendMessage
   const originRemote = typeof options.originRemote === 'string' && options.originRemote.trim() !== '' ? options.originRemote.trim() : null;
   const jid = (typeof to === 'string' && to.includes('@')) ? to : (typeof to === 'string' && to ? `${to}@c.us` : null);
 
-  // Maintain active listeners keyed by jid+callbackUrl so repeated sends with same
-  // recipient and callback remove previous listeners to avoid duplicate callbacks.
+  // Maintain active listeners keyed by jid only (not callbackUrl) so that
+  // the very last callback registered for a number is the active listener.
   if (!global.__whatsapp_active_listeners) global.__whatsapp_active_listeners = new Map();
 
-  // If callbackUrl provided, form a stable key; otherwise create a unique key
-  // so listeners without callbackUrl do not collide.
   // Use originRemote in the key if available so repeated sends to same recipient
   // (but different origin message) don't accidentally collide.
-  const keyBase = originRemote || jid || '__no_jid__';
-  const key = callbackUrl ? `${keyBase}|${callbackUrl}` : `${keyBase}|__unique__|${Date.now()}|${Math.random()}`;
+  // Skip callbackUrl from keying so only the most recent listener per number is active.
+  const key = originRemote || jid || '__no_jid__';
 
   // If an existing listener exists for this key, remove it now.
   const existing = global.__whatsapp_active_listeners.get(key);
