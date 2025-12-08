@@ -103,7 +103,7 @@ function waitForReply(to, options = {}) {
  */
 function waitForReplies(to, onReply, options = {}) {
   const timeoutMs = typeof options.timeout === 'number' ? options.timeout : 60000;
-  // options.originRemote: prefer matching replies by the message id.remote returned from sendMessage
+  // options.originRemote: the message id.remote from sendMessage - most reliable for matching
   const originRemote = typeof options.originRemote === 'string' && options.originRemote.trim() !== '' ? options.originRemote.trim() : null;
   const jid = (typeof to === 'string' && to.includes('@')) ? to : (typeof to === 'string' && to ? `${to}@c.us` : null);
 
@@ -111,10 +111,9 @@ function waitForReplies(to, onReply, options = {}) {
   // the very last callback registered for a number is the active listener.
   if (!global.__whatsapp_active_listeners) global.__whatsapp_active_listeners = new Map();
 
-  // Use originRemote in the key if available so repeated sends to same recipient
-  // (but different origin message) don't accidentally collide.
-  // Skip callbackUrl from keying so only the most recent listener per number is active.
-  const key = originRemote || jid || '__no_jid__';
+  // Use jid (phone number) as the key to ensure only one listener per number.
+  // This prevents duplicate callbacks when multiple messages are sent to the same recipient.
+  const key = jid || '__no_jid__';
 
   // If an existing listener exists for this key, remove it now.
   const existing = global.__whatsapp_active_listeners.get(key);
@@ -129,30 +128,30 @@ function waitForReplies(to, onReply, options = {}) {
   return new Promise((resolve) => {
     const handler = (msg) => {
       try {
-        // Prefer matching by the originRemote (message id.remote) when provided.
-        // This is more reliable than comparing msg.from because some messages
-        // may use different fields depending on message type (groups, statuses).
+        // Match by msg.id.remote if originRemote is available (most reliable)
+        // This handles cases where phone numbers have different formats (country codes, etc.)
         let matched = false;
 
-        if (originRemote) {
-          // msg.id may be an object with a `remote` property in whatsapp-web.js
-          try {
-            if (msg && msg.id && (msg.id.remote === originRemote || msg.id._serialized === originRemote)) matched = true;
-          } catch (e) {
-            // ignore
+        if (originRemote && msg && msg.id && msg.id.remote) {
+          matched = (msg.id.remote === originRemote);
+          if (matched) {
+            console.log('[DEBUG] Matched by originRemote:', originRemote);
           }
         }
 
-        // Fallback: compare msg.from or msg.author to the provided jid
+        // Fallback: try matching by jid if originRemote not available or didn't match
         if (!matched && jid) {
-          if (msg.from === jid || msg.author === jid) matched = true;
+          if (msg.from === jid || msg.author === jid) {
+            matched = true;
+            console.log('[DEBUG] Matched by jid:', jid, 'from msg.from/msg.author');
+          }
         }
 
         if (matched) {
           onReply(msg);
         }
       } catch (e) {
-        // swallow and continue
+        console.error('[DEBUG] Error in handler:', e);
       }
     };
 
