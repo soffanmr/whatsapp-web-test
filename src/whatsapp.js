@@ -45,8 +45,23 @@ function isReady() {
  */
 async function sendText(to, message) {
   if (!ready) throw new Error('WhatsApp client not ready');
-  const jid = to.includes('@') ? to : `${to}@c.us`;
-  return client.sendMessage(jid, message);
+  
+  // Normalize the input to a phone number (remove @c.us if present for getNumberId)
+  const phone = to.includes('@') ? to.split('@')[0] : to;
+  
+  try {
+    // getNumberId resolves the correct JID (e.g. adding country code or finding the LID)
+    const numberId = await client.getNumberId(phone);
+    if (!numberId) {
+      throw new Error(`The number ${to} is not registered on WhatsApp.`);
+    }
+    
+    // Use the resolved JID (_serialized) to send the message
+    return client.sendMessage(numberId._serialized, message);
+  } catch (err) {
+    console.error('Error in sendText:', err);
+    throw err;
+  }
 }
 
 async function getQrImageBuffer() {
