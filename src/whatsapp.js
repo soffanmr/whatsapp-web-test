@@ -5,7 +5,11 @@ const qrcodeLib = require('qrcode');
 // Initialize WhatsApp client with LocalAuth (stores session in .wwebjs_auth)
 const client = new Client({
   authStrategy: new LocalAuth(),
-  puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+  puppeteer: {
+    headless: true,
+    protocolTimeout: 60000, // Increase to 60 seconds (default is usually 30s)
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  }
 });
 
 let ready = false;
